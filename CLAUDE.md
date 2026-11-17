@@ -44,7 +44,7 @@ On-device, UPI-first AI expense tracker. Flutter, Android first. Owner: Raghav.
 ## Paused here (16 Nov 2026)
 - Android build moved to Gradle 9.5.0 / AGP 9.3.1 / Kotlin 2.4.20 (Flutter 3.50 needs Gradle 9.3.1+); `kotlin-android` plugin removed (AGP 9 built-in Kotlin), `kotlinOptions` replaced by `kotlin { compilerOptions }`. The debug APK (229 MB) with the assistant and the new icon was installed on the phone on 17 Nov 2026; no errors at launch. Not yet tried: the model download and a first question.
 - New launcher icon from `X:\PaisaPilot logo suite\1.png` (the folder sits next to the project): legacy and adaptive mipmaps (background #070E0D), masters in `app/assets/brand/`; app label "PaisaPilot".
-- flutter_edge_ai's build hook caches its native libs under `%LOCALAPPDATA%\flutter_gemma` with no setting to change it. On 17 Nov 2026 the folder (~300 MB) was moved to `X:\caches\flutter_gemma`, and `C:\Users\ragha\AppData\Local\flutter_gemma` is now a directory junction to it. To undo: delete the junction, then move the folder back.
+- flutter_edge_ai's build hook caches its native libs under `%LOCALAPPDATA%\flutter_gemma` (~300 MB on C:) with no setting to change it. After the assistant was removed, that cache and its junction were deleted (17 Nov 2026). If flutter_edge_ai ever comes back, move the folder to X: and leave a junction on C: again.
 
 ## Next
 1. Ask Raghav to label the large unsorted payees before training the categoriser (Unsorted tab + Largest first).
