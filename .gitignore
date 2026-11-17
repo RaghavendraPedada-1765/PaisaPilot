@@ -1,0 +1,11 @@
+# Real bank data and personal categoriser keywords: never commit.
+data/
+*.pdf
+
+# Local Claude Code settings
+.claude/settings.local.json
+
+# Android build output not covered by app/android/.gitignore
+app/android/.kotlin/
+app/android/build/
+*.apk
