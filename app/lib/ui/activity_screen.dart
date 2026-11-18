@@ -42,7 +42,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                     hintText: 'Search payee or category',
                     prefixIcon: const Icon(Icons.search),
                     filled: true,
-                    fillColor: Colors.white.withValues(alpha: 0.05),
+                    fillColor: const Color(0xFF20302A),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                   ),
                 ),
@@ -62,6 +62,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                   children: [
                     for (final (label, dir) in [('All', null), ('Spent', 'DR'), ('Received', 'CR')]) ...[
                       ChoiceChip(
+                        showCheckmark: false,
                         label: Text(label),
                         selected: _direction == dir,
                         onSelected: (_) => setState(() => _direction = dir),
@@ -123,7 +124,8 @@ class _TxnList extends StatelessWidget {
       builder: (context, snap) {
         final rows = snap.data ?? const <ActivityResult>[];
         if (snap.hasData && rows.isEmpty) {
-          return Center(child: Text(category == 0 ? 'Nothing left to sort' : 'Nothing here yet'));
+          final filtered = search.isNotEmpty || direction != null;
+          return Center(child: Text(filtered ? 'No matching transactions' : category == 0 ? 'Nothing left to sort' : 'No transactions here yet'));
         }
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),

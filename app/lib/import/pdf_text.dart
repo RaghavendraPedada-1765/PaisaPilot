@@ -177,8 +177,8 @@ Future<List<List<PositionedChar>>> documentChars(PdfDocument doc) async => [
           ],
     ];
 
-/// Account number as printed in a statement header, e.g. `XXXXXXXX1595` or
-/// `110012341595`; null when the header has none.
+/// Account number as printed in a statement header, e.g. `XXXXXXXX4321` or
+/// `110012344321`; null when the header has none.
 String? statementAccount(String text) {
   final m = RegExp(r'(?:A/c|Account)\s*(?:No\.?|Number)?\s*[:\-]?\s*([X*\d]{6,})', caseSensitive: false)
       .firstMatch(text);

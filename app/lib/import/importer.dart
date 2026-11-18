@@ -121,7 +121,7 @@ class Importer {
   static String _digits(String s) => s.replaceAll(RegExp(r'\D'), '');
 
   /// Same bank and the same trailing digits: alerts mask one account as both
-  /// XXX595 and XX1595. Alerts without a number (wallets, slice card
+  /// XXX321 and XX4321. Alerts without a number (wallets, slice card
   /// repayments) match the bank's account of the same kind.
   Future<int> _accountFor(SmsTxn sms) async {
     final bank = _bankNames[sms.source] ?? sms.source;

@@ -138,7 +138,11 @@ class _ShellState extends State<_Shell> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_tab == 0 ? 'PaisaPilot' : 'Activity'),
+        title: Row(children: [
+          const Icon(Icons.account_balance_wallet_rounded, color: teal),
+          const SizedBox(width: 10),
+          Text(_tab == 0 ? 'PaisaPilot' : 'Activity', style: const TextStyle(fontWeight: FontWeight.w700)),
+        ]),
         actions: [
           if (_sync != null)
             IconButton(
@@ -182,10 +186,11 @@ class _ShellState extends State<_Shell> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         tooltip: 'Paste an SMS alert',
         onPressed: _addSms,
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.add),
+        label: const Text('Add alert'),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,

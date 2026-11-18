@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 
-/// Dark glass look with a teal accent. Colours are a first pass; the UI
-/// details are still to be agreed.
-const teal = Color(0xFF2DD4BF);
-const _ink = Color(0xFF0B1416);
+/// Shared palette for the dashboard, activity ledger and import controls.
+const teal = Color(0xFF82E5CA);
+const _ink = Color(0xFF101816);
 
 ThemeData buildTheme() {
   final scheme = ColorScheme.fromSeed(
@@ -18,8 +17,11 @@ ThemeData buildTheme() {
     scaffoldBackgroundColor: Colors.transparent,
     appBarTheme: const AppBarTheme(backgroundColor: Colors.transparent, scrolledUnderElevation: 0),
     navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: Colors.white.withValues(alpha: 0.04),
+      backgroundColor: const Color(0xFF17211E),
       indicatorColor: teal.withValues(alpha: 0.18),
+    ),
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(
+      backgroundColor: teal, foregroundColor: _ink, elevation: 2,
     ),
     dividerTheme: DividerThemeData(color: Colors.white.withValues(alpha: 0.06), space: 1),
   );
@@ -36,7 +38,7 @@ class GlassBackground extends StatelessWidget {
           gradient: RadialGradient(
             center: Alignment(-0.8, -1),
             radius: 1.6,
-            colors: [Color(0xFF0F3A3A), _ink],
+            colors: [Color(0xFF203830), _ink],
           ),
         ),
         child: child,
@@ -53,7 +55,7 @@ class GlassCard extends StatelessWidget {
   // the nearest Material, which a coloured box would hide.
   @override
   Widget build(BuildContext context) => Material(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: const Color(0xFF1A2521),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(color: Colors.white.withValues(alpha: 0.08)),

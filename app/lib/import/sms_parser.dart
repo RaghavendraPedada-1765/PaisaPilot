@@ -25,7 +25,7 @@ class SmsTxn {
   final double amount;
   final String? date; // ISO date, null if unparseable
   final String? time; // HH:MM:SS when the alert has one
-  final String account; // masked, e.g. XXX595, or the wallet name
+  final String account; // masked, e.g. XXX321, or the wallet name
   final String party; // empty when the alert does not name one
   final String? ref; // UPI ref / RRN
   final double? balance;
@@ -67,7 +67,7 @@ final _patterns = [
       r'(?<date>\d{1,2}/\d{1,2}/\d{2}) (?<time>\d{1,2}:\d{2} [AP]M) from (?<party>.+?) '
       r'\(UPI Ref no (?<ref>\d+)\)'), dayFirst: false),
   // Canara balance alert, no payee or ref: "An amount of INR 40.00 has been DEBITED to your
-  // account XXX595 on 22/10/2026[ towards ATM / IMPS ...]. Total Avail.bal INR 1,234.00"
+  // account XXX321 on 22/10/2026[ towards ATM / IMPS ...]. Total Avail.bal INR 1,234.00"
   _Pattern('canara', null, RegExp(
       r'(?:An amount of|Rs\.) ' '$_amount' r' has been (?<dir>DEBITED|CREDITED) to your (?:account|A/c) '
       r'(?<acct>X+\d+) on (?<date>\d{1,2}/\d{1,2}/\d{2,4})(?: towards (?<party>.+?))?\.?\s*'
@@ -84,7 +84,7 @@ final _patterns = [
   _Pattern('icici', 'DR', RegExp(
       '$_amount' r' successfully debited from ICICI Bank (?<acct>X+\d+) on '
       r'(?<date>\d{2}-[A-Za-z]{3}-\d{2}) towards (?<party>.+?) via .*?RRN:\s*(?<ref>\d+)')),
-  // ICICI UPI debit: "ICICI Bank Acct XX118 debited for Rs 40.00 on 14-Nov-26; NAME credited. UPI:1234..."
+  // ICICI UPI debit: "ICICI Bank Acct XX456 debited for Rs 40.00 on 14-Nov-26; NAME credited. UPI:1234..."
   _Pattern('icici', 'DR', RegExp(
       r'ICICI Bank Acct (?<acct>X+\d+) debited for ' '$_amount' r' on '
       r'(?<date>\d{2}-[A-Za-z]{3}-\d{2}); (?<party>.+?) credited\.(?:\s*UPI:\s*(?<ref>\d+))?')),

@@ -91,25 +91,41 @@ Future<void> importStatementPdf(BuildContext context, AppDatabase db) async {
 
 Future<String?> _askPassword(BuildContext context) async {
   if (!context.mounted) return null;
-  final controller = TextEditingController();
-  final password = await showDialog<String>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Statement password'),
-      content: TextField(
-        controller: controller,
-        autofocus: true,
-        obscureText: true,
-        decoration: const InputDecoration(hintText: 'Password for this PDF'),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Open')),
-      ],
-    ),
-  );
-  controller.dispose();
-  return password;
+  return showDialog<String>(context: context, builder: (_) => const _PasswordDialog());
+}
+
+/// Owns its controller and disposes it only once the dialog has closed (see
+/// _PasteAlertDialog in sms_import_dialog.dart for the crash this avoids).
+class _PasswordDialog extends StatefulWidget {
+  const _PasswordDialog();
+
+  @override
+  State<_PasswordDialog> createState() => _PasswordDialogState();
+}
+
+class _PasswordDialogState extends State<_PasswordDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Statement password'),
+        content: TextField(
+          controller: _controller,
+          autofocus: true,
+          obscureText: true,
+          decoration: const InputDecoration(hintText: 'Password for this PDF'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, _controller.text), child: const Text('Open')),
+        ],
+      );
 }
 
 String _digits(String s) => s.replaceAll(RegExp(r'\D'), '');

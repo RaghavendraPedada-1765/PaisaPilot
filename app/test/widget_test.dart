@@ -37,6 +37,24 @@ void main() {
     await finish(tester);
   });
 
+  testWidgets('the + dialog closes cleanly with Cancel and with Add', (tester) async {
+    await pumpApp(tester);
+    for (final button in ['Cancel', 'Add']) {
+      await tester.tap(find.byTooltip('Paste an SMS alert'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'not a bank alert');
+      await tester.tap(find.text(button));
+      // Step through the closing animation, where a disposed controller crashed.
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await settle(tester);
+      expect(tester.takeException(), isNull, reason: button);
+      expect(find.byType(AlertDialog), findsNothing);
+    }
+    await finish(tester);
+  });
+
   testWidgets('home shows the month, totals and categories', (tester) async {
     await tester.runAsync(() async {
       final importer = Importer(db);
@@ -52,6 +70,8 @@ void main() {
     expect(find.text('₹6,600'), findsOneWidget); // received
     expect(find.text('Trip bookings'), findsOneWidget);
 
+    // Recent activity sits below the cards on the test's small screen.
+    await tester.scrollUntilVisible(find.text('See all'), 200);
     await tester.tap(find.text('See all'));
     await settle(tester);
     expect(find.text('ANITA KUMAR'), findsWidgets);
