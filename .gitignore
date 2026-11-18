@@ -1,5 +1,5 @@
 # Real bank data and personal categoriser keywords: never commit.
-data/
+/data/
 *.pdf
 
 # Local Claude Code settings

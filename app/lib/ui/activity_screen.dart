@@ -127,6 +127,13 @@ class _TxnList extends StatelessWidget {
           final filtered = search.isNotEmpty || direction != null;
           return Center(child: Text(filtered ? 'No matching transactions' : category == 0 ? 'Nothing left to sort' : 'No transactions here yet'));
         }
+        final dayNet = <String, double>{};
+        if (!byAmount) {
+          for (final row in rows) {
+            final t = row.t;
+            dayNet[t.txnDate] = (dayNet[t.txnDate] ?? 0) + (t.direction == 'CR' ? t.amount : -t.amount);
+          }
+        }
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
           itemCount: rows.length,
@@ -140,7 +147,7 @@ class _TxnList extends StatelessWidget {
                 if (newDay)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(4, 16, 4, 4),
-                    child: Text(dayLabel(r.t.txnDate),
+                    child: Text('${dayLabel(r.t.txnDate)}   |   Shown net ${inr(dayNet[r.t.txnDate]!)}',
                         style: Theme.of(context).textTheme.labelLarge?.copyWith(color: teal)),
                   ),
                 TxnTile(db: db, row: r, showDate: byAmount),

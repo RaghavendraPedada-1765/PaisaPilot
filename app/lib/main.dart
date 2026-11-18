@@ -49,7 +49,18 @@ class _Shell extends StatefulWidget {
   State<_Shell> createState() => _ShellState();
 }
 
-class _ShellState extends State<_Shell> {
+class _ShellState extends State<_Shell> with SingleTickerProviderStateMixin {
+  late final _entrance = AnimationController(vsync: this, duration: const Duration(milliseconds: 160), value: 1);
+
+  void _selectTab(int index) {
+    if (_tab == index) return;
+    setState(() => _tab = index);
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _entrance.value = 1;
+    } else {
+      _entrance.forward(from: 0);
+    }
+  }
   late final _importer = Importer(widget.db);
   late final _sync = widget.inbox == null ? null : SmsSync(widget.db, widget.inbox!);
   late final _email = widget.email == null ? null : EmailSync(widget.db, widget.email!);
@@ -111,6 +122,7 @@ class _ShellState extends State<_Shell> {
 
   @override
   void dispose() {
+    _entrance.dispose();
     _lifecycle?.dispose();
     super.dispose();
   }
@@ -173,18 +185,18 @@ class _ShellState extends State<_Shell> {
       ),
       body: SafeArea(
         top: false,
-        child: IndexedStack(
+        child: FadeTransition(opacity: _entrance, child: IndexedStack(
           index: _tab,
           children: [
             HomeScreen(
               db: widget.db,
-              onSeeAll: () => setState(() => _tab = 1),
+              onSeeAll: () => _selectTab(1),
               onAddSms: _addSms,
               onReadSms: _sync == null ? null : () => _readSms(ask: true),
             ),
             ActivityScreen(db: widget.db),
           ],
-        ),
+        )),
       ),
       floatingActionButton: FloatingActionButton.extended(
         tooltip: 'Paste an SMS alert',
@@ -194,7 +206,7 @@ class _ShellState extends State<_Shell> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
+        onDestinationSelected: _selectTab,
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
           NavigationDestination(

@@ -136,7 +136,7 @@ void main() {
         rawName: 'ALICE', vpa: const Value('alice@okaxis'), defaultCategoryId: Value(cat.id)));
     await importer.importStatement(canara, statementFixture);
     final alice = (await txns()).firstWhere((t) => t.upiRef == '111111111111');
-    expect((alice.categoryId, alice.categorySource), (cat.id, 'user'));
+    expect((alice.categoryId, alice.categorySource), (cat.id, 'rule'));
   });
 
   test('labelling a payee relabels its other rows but not individual picks', () async {
@@ -158,6 +158,70 @@ void main() {
     expect((await row(picked)).categoryId, cats['Shopping']);
     final payee = await (db.select(db.payees)..where((p) => p.id.equals(first.payeeId!))).getSingle();
     expect(payee.defaultCategoryId, cats['Family']);
+  });
+
+  group('payee-wide labels', () {
+    late Map<String, int> cats;
+    late int payeeId;
+    Future<Txn> row(int id) => (db.select(db.transactions)..where((t) => t.id.equals(id))).getSingle();
+    Future<int> add({double amount = 10, int? category, String? source, String direction = 'DR'}) =>
+        db.into(db.transactions).insert(TransactionsCompanion.insert(
+            accountId: canara, txnDate: '2026-10-09', direction: direction, amount: amount,
+            payeeId: Value(payeeId), categoryId: Value(category), categorySource: Value(source), source: 'manual'));
+
+    setUp(() async {
+      cats = {for (final c in await db.select(db.categories).get()) c.name: c.id};
+      payeeId = await db.into(db.payees).insert(PayeesCompanion.insert(rawName: 'SWIGGY'));
+    });
+
+    test('changing a payee twice moves its rows both times', () async {
+      final a = await add(), b = await add(), c = await add();
+      await db.setCategory(await row(a), cats['Shopping'], forPayee: true);
+      expect(await db.payeeChangeCount(await row(b)), 3);
+      await db.setCategory(await row(b), cats['Family'], forPayee: true);
+
+      for (final id in [a, b, c]) {
+        expect((await row(id)).categoryId, cats['Family']);
+      }
+      expect(((await row(a)).categorySource, (await row(b)).categorySource), ('rule', 'user'));
+    });
+
+    test('rows wrongly pinned by older versions still follow the payee', () async {
+      await (db.update(db.payees)..where((p) => p.id.equals(payeeId)))
+          .write(PayeesCompanion(defaultCategoryId: Value(cats['Shopping'])));
+      final old = await add(category: cats['Shopping'], source: 'user');
+      final own = await add(category: cats['Family'], source: 'user');
+      final tapped = await add(category: cats['Shopping'], source: 'user');
+
+      expect(await db.payeeChangeCount(await row(tapped)), 2);
+      await db.setCategory(await row(tapped), cats['Self transfer'], forPayee: true);
+      expect((await row(old)).categoryId, cats['Self transfer']);
+      expect((await row(own)).categoryId, cats['Family']);
+    });
+
+    test('review lists payees by unsorted spend and labels only the reviewed rows', () async {
+      final small = await db.into(db.payees).insert(PayeesCompanion.insert(rawName: 'TEA STALL'));
+      await db.into(db.transactions).insert(TransactionsCompanion.insert(
+          accountId: canara, txnDate: '2026-10-09', direction: 'DR', amount: 5, payeeId: Value(small), source: 'manual'));
+      final first = await add(amount: 100), second = await add(amount: 50);
+      final sorted = await add(category: cats['Family'], source: 'rule');
+      await add(direction: 'CR'); // money received is not unsorted spending
+
+      final ranked = await db.watchUnsortedPayees().first;
+      expect([for (final p in ranked) (p.name, p.payments, p.spent)], [('SWIGGY', 2, 150.0), ('TEA STALL', 1, 5.0)]);
+
+      final ids = await db.unsortedPaymentIds(payeeId);
+      expect(ids.toSet(), {first, second});
+      await db.setCategory(await row(second), cats['Shopping']); // corrected meanwhile
+      await db.labelPayee(payeeId, cats['Food and cafes']!, ids);
+
+      expect(((await row(first)).categoryId, (await row(first)).categorySource), (cats['Food and cafes'], 'rule'));
+      expect((await row(second)).categoryId, cats['Shopping']);
+      expect((await row(sorted)).categoryId, cats['Family']);
+      final payee = await (db.select(db.payees)..where((p) => p.id.equals(payeeId))).getSingle();
+      expect(payee.defaultCategoryId, cats['Food and cafes']);
+      expect((await db.watchUnsortedPayees().first).map((p) => p.name), ['TEA STALL']);
+    });
   });
 
   group('Canara UPI and balance-only alerts for one payment', () {

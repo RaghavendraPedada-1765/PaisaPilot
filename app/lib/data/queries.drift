@@ -1,0 +1,37 @@
+import 'schema.drift';
+
+-- Spending excludes categories with counts_as_spend = 0 (self transfers).
+-- Unsorted rows (category_id NULL) count until the user labels them.
+
+latestMonth: SELECT MAX(substr(txn_date, 1, 7)) AS month FROM transactions;
+
+monthTotals: SELECT
+  COALESCE(SUM(CASE WHEN t.direction = 'DR' THEN t.amount END), 0.0) AS spent,
+  COALESCE(SUM(CASE WHEN t.direction = 'CR' THEN t.amount END), 0.0) AS received
+FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+WHERE substr(t.txn_date, 1, 7) = :month AND (c.id IS NULL OR c.counts_as_spend);
+
+spendByCategory: SELECT c.id AS category_id, c.name AS category,
+  SUM(t.amount) AS total, COUNT(*) AS txn_count
+FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+WHERE substr(t.txn_date, 1, 7) = :month AND t.direction = 'DR'
+  AND (c.id IS NULL OR c.counts_as_spend)
+GROUP BY t.category_id
+ORDER BY total DESC;
+
+-- :category NULL = every category, 0 = unsorted only (real ids start at 1).
+-- :by_amount puts the largest amounts first instead of the newest.
+activity(:direction AS TEXT OR NULL, :category AS INTEGER OR NULL, :by_amount AS BOOLEAN): SELECT t.**,
+  COALESCE(p.display_name, p.raw_name) AS payee, c.name AS category, a.name AS account,
+  (SELECT COUNT(*) FROM attachments x WHERE x.txn_id = t.id) AS photos
+FROM transactions t
+  INNER JOIN accounts a ON a.id = t.account_id
+  LEFT JOIN payees p ON p.id = t.payee_id
+  LEFT JOIN categories c ON c.id = t.category_id
+WHERE (:direction IS NULL OR t.direction = :direction)
+  AND (:category IS NULL OR (:category = 0 AND t.category_id IS NULL) OR t.category_id = :category)
+  AND (:search = '' OR p.raw_name LIKE '%' || :search || '%'
+       OR p.display_name LIKE '%' || :search || '%' OR c.name LIKE '%' || :search || '%')
+ORDER BY CASE WHEN :by_amount THEN t.amount ELSE 0 END DESC,
+  t.txn_date DESC, t.txn_time DESC, t.id DESC
+LIMIT :max_rows;

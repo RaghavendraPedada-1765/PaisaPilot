@@ -70,10 +70,12 @@ void main() {
     expect(find.text('₹6,600'), findsOneWidget); // received
     expect(find.text('Trip bookings'), findsOneWidget);
 
-    // Recent activity sits below the cards on the test's small screen.
+    // Recent activity sits below the cards on the test's small screen, where
+    // scrolling leaves it under the app bar; press the button directly.
     await tester.scrollUntilVisible(find.text('See all'), 200);
-    await tester.tap(find.text('See all'));
+    tester.widget<TextButton>(find.widgetWithText(TextButton, 'See all')).onPressed!();
     await settle(tester);
+    expect(find.widgetWithText(AppBar, 'Activity'), findsOneWidget);
     expect(find.text('ANITA KUMAR'), findsWidgets);
     await finish(tester);
   });

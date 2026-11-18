@@ -12,6 +12,8 @@ Future<void> showCategorySheet(BuildContext context, AppDatabase db, ActivityRes
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
+    sheetAnimationStyle: MediaQuery.disableAnimationsOf(context) ? AnimationStyle.noAnimation
+        : const AnimationStyle(duration: Duration(milliseconds: 240), reverseDuration: Duration(milliseconds: 200)),
     backgroundColor: const Color(0xFF122022),
     builder: (_) => _CategorySheet(db: db, row: row),
   );
@@ -30,6 +32,24 @@ class _CategorySheetState extends State<_CategorySheet> {
   var _forPayee = true;
 
   Future<void> _pick(int? categoryId) async {
+    final row = widget.row;
+    if (_forPayee && row.t.payeeId != null) {
+      final count = await widget.db.payeeChangeCount(row.t);
+      if (!mounted) return;
+      final rows = count == 1 ? '1 transaction' : '$count transactions';
+      final payee = row.payee ?? 'this payee';
+      final apply = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+        title: Text(categoryId == null ? 'Move $rows to Unsorted?' : 'Apply category to $rows?'),
+        content: Text(categoryId == null
+            ? '$payee will no longer have a default category.'
+            : 'This also sets the default category for $payee.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Apply')),
+        ],
+      ));
+      if (apply != true || !mounted) return;
+    }
     await widget.db.setCategory(widget.row.t, categoryId, forPayee: _forPayee);
     if (mounted) Navigator.pop(context);
   }
@@ -185,7 +205,11 @@ class _CategorySheetState extends State<_CategorySheet> {
                   style: text.bodyMedium?.copyWith(color: Colors.white60)),
               if (t.rawText != null) ...[
                 const SizedBox(height: 8),
-                Text(t.rawText!, style: text.bodySmall?.copyWith(color: Colors.white38)),
+                ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  title: const Text('Original transaction alert'),
+                  children: [SelectableText(t.rawText!)],
+                ),
               ],
               const SizedBox(height: 16),
               Text('Photos', style: text.labelLarge),

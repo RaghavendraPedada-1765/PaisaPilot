@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../data/database.dart';
 import 'format.dart';
+import 'payee_review.dart';
 import 'theme.dart';
 import 'txn_tile.dart';
 
@@ -26,6 +27,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   String? _month; // null = latest month with data
+  late final _unsortedPayees = widget.db.watchUnsortedPayees();
 
   @override
   Widget build(BuildContext context) {
@@ -52,6 +54,21 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 16),
             _ByCategory(key: ValueKey(month), db: widget.db, month: month),
             const SizedBox(height: 16),
+            StreamBuilder(
+              stream: _unsortedPayees,
+              builder: (context, snap) {
+                final count = snap.data?.length ?? 0;
+                if (count == 0) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: OutlinedButton.icon(
+                    onPressed: () => showPayeeReview(context, widget.db),
+                    icon: const Icon(Icons.sell_outlined),
+                    label: Text('Review unsorted payees ($count)'),
+                  ),
+                );
+              },
+            ),
             _Recent(db: widget.db, onSeeAll: widget.onSeeAll),
           ],
         );
@@ -113,7 +130,7 @@ class _Totals extends StatelessWidget {
             gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFFB8F3DB), Color(0xFF83D9BD)],
+              colors: [Color(0xFF183C31), Color(0xFF10221E)],
             ),
             borderRadius: BorderRadius.circular(24),
           ),
@@ -123,14 +140,14 @@ class _Totals extends StatelessWidget {
               Text(
                 'Monthly spending',
                 style: text.titleMedium?.copyWith(
-                  color: const Color(0xFF204A3A),
+                  color: const Color(0xFFC6DECF),
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 inr(spent),
                 style: text.displaySmall?.copyWith(
-                  color: const Color(0xFF102D23),
+                  color: const Color(0xFFF1FFF9),
                   fontWeight: FontWeight.w700,
                   letterSpacing: -1.4,
                 ),
@@ -140,14 +157,14 @@ class _Totals extends StatelessWidget {
                 const Text(
                   'Cash flow',
                   style: TextStyle(
-                    color: Color(0xFF204A3A),
+                    color: Color(0xFFC6DECF),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 8),
                 for (final (label, amount, color) in [
-                  ('Spent', spent, const Color(0xFF246F59)),
-                  ('Received', received, const Color(0xFF42527D)),
+                  ('Spent', spent, const Color(0xFF82E5CA)),
+                  ('Received', received, const Color(0xFFABA8EF)),
                 ])
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 3),
@@ -157,7 +174,7 @@ class _Totals extends StatelessWidget {
                           width: 80,
                           child: Text(
                             label,
-                            style: const TextStyle(color: Color(0xFF204A3A)),
+                            style: const TextStyle(color: Color(0xFFC6DECF)),
                           ),
                         ),
                         Expanded(
@@ -171,7 +188,7 @@ class _Totals extends StatelessWidget {
                             builder: (_, value, _) => LinearProgressIndicator(
                               value: value,
                               color: color,
-                              backgroundColor: const Color(0x22204A3A),
+                              backgroundColor: const Color(0x33ACCDBF),
                               borderRadius: BorderRadius.circular(6),
                               minHeight: 8,
                               // The value must stay numeric (Flutter asserts on
@@ -185,7 +202,19 @@ class _Totals extends StatelessWidget {
                   ),
                 const SizedBox(height: 12),
               ],
-              const Divider(color: Color(0x33204A3A)),
+              StreamBuilder(
+                key: ValueKey(month),
+                stream: db.monthTotals(shiftMonth(month, -1)).watchSingle(),
+                builder: (context, prior) {
+                  final previous = prior.data;
+                  // Nothing to compare against before the first month with data.
+                  if (previous == null || !snap.hasData || previous.spent + previous.received == 0) {
+                    return const SizedBox.shrink();
+                  }
+                  return Text('Last month net  ${inr(previous.received - previous.spent)}');
+                },
+              ),
+              const Divider(),
               const SizedBox(height: 14),
               Row(
                 children: [
@@ -218,12 +247,12 @@ class _Figure extends StatelessWidget {
       children: [
         Text(
           label,
-          style: text.labelMedium?.copyWith(color: const Color(0xFF305345)),
+          style: text.labelMedium?.copyWith(color: const Color(0xFFAFCDC0)),
         ),
         Text(
           value,
           style: text.titleMedium?.copyWith(
-            color: const Color(0xFF102D23),
+            color: const Color(0xFFF1FFF9),
             fontWeight: FontWeight.w700,
           ),
         ),

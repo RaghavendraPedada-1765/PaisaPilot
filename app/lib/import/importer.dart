@@ -232,7 +232,9 @@ class Importer {
 
     final payee = await _payee(payeeName, vpa);
     int? categoryId = payee?.defaultCategoryId;
-    String? categorySource = categoryId == null ? null : 'user';
+    // Following the payee's default is not an individual label: 'rule', so
+    // a later change to the payee reaches this row too.
+    String? categorySource = categoryId == null ? null : 'rule';
     if (categoryId == null && payeeName.isNotEmpty) {
       final rule = categorise(payeeName, vpa, direction);
       if (rule != null) {
