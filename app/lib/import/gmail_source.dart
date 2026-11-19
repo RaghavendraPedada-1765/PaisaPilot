@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:google_sign_in/google_sign_in.dart';
@@ -30,6 +31,12 @@ abstract interface class EmailSource {
 /// Reads Gmail directly from the phone with read-only access. No server sits
 /// in between: requests go from the app to Google and nowhere else.
 class GmailSource implements EmailSource {
+  GmailSource({http.Client? client, this.retryDelay = const Duration(seconds: 1)}) : _http = client ?? http.Client();
+  final http.Client _http;
+
+  /// Wait before the first retry; doubled for the next.
+  final Duration retryDelay;
+
   // OAuth "Web application" client from the PaisaPilot Google Cloud project.
   // Android's sign-in needs it; it is an identifier, not a secret.
   static const _serverClientId = '398535140839-r7av9gqrgjo06ukam4bvtf79lmle936c.apps.googleusercontent.com';
@@ -85,10 +92,24 @@ class GmailSource implements EmailSource {
     ];
   }
 
+  /// A full re-read makes one request per email, so a single passing error
+  /// (Google answers 500 or 429 now and then, or a request stalls) used to
+  /// fail the whole sync. Those are retried twice; other errors are not.
   Future<Map<String, Object?>> _get(Uri uri, Map<String, String> headers) async {
-    final res = await http.get(uri, headers: headers);
-    if (res.statusCode != 200) throw GmailException(res.statusCode, res.body);
-    return jsonDecode(res.body) as Map<String, Object?>;
+    for (var attempt = 0;; attempt++) {
+      http.Response? res;
+      try {
+        res = await _http.get(uri, headers: headers).timeout(const Duration(seconds: 20));
+      } on TimeoutException {
+        if (attempt == 2) rethrow;
+      }
+      if (res != null) {
+        if (res.statusCode == 200) return jsonDecode(res.body) as Map<String, Object?>;
+        final passing = res.statusCode == 429 || res.statusCode >= 500;
+        if (!passing || attempt == 2) throw GmailException(res.statusCode, res.body);
+      }
+      await Future<void>.delayed(retryDelay * (1 << attempt));
+    }
   }
 
   EmailMessage _message(Map<String, Object?> m) {

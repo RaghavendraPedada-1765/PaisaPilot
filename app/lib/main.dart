@@ -8,6 +8,7 @@ import 'import/gmail_source.dart';
 import 'import/importer.dart';
 import 'import/sms_inbox.dart';
 import 'import/sms_sync.dart';
+import 'ui/activity_filter.dart';
 import 'ui/activity_screen.dart';
 import 'ui/home_screen.dart';
 import 'ui/sms_import_dialog.dart';
@@ -24,10 +25,11 @@ void main() {
 }
 
 class PaisaPilotApp extends StatelessWidget {
-  const PaisaPilotApp({super.key, required this.db, this.inbox, this.email});
+  const PaisaPilotApp({super.key, required this.db, this.inbox, this.email, this.now});
   final AppDatabase db;
   final SmsInbox? inbox; // null where there is no SMS inbox (desktop, tests)
   final EmailSource? email;
+  final DateTime Function()? now; // tests pin today's date
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -35,22 +37,26 @@ class PaisaPilotApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: buildTheme(),
         builder: (context, child) => GlassBackground(child: child!),
-        home: _Shell(db: db, inbox: inbox, email: email),
+        home: _Shell(db: db, inbox: inbox, email: email, now: now),
       );
 }
 
 class _Shell extends StatefulWidget {
-  const _Shell({required this.db, this.inbox, this.email});
+  const _Shell({required this.db, this.inbox, this.email, this.now});
   final AppDatabase db;
   final SmsInbox? inbox;
   final EmailSource? email;
+  final DateTime Function()? now;
 
   @override
   State<_Shell> createState() => _ShellState();
 }
 
 class _ShellState extends State<_Shell> with SingleTickerProviderStateMixin {
+  // Home and Activity stay mounted (IndexedStack keeps their state and
+  // scroll positions); switching fades the new one in over 160 ms.
   late final _entrance = AnimationController(vsync: this, duration: const Duration(milliseconds: 160), value: 1);
+  final _filter = ValueNotifier(const ActivityFilter());
 
   void _selectTab(int index) {
     if (_tab == index) return;
@@ -61,6 +67,13 @@ class _ShellState extends State<_Shell> with SingleTickerProviderStateMixin {
       _entrance.forward(from: 0);
     }
   }
+
+  /// Home's donut, legend and "See all" land here.
+  void _openActivity(ActivityFilter filter) {
+    _filter.value = filter;
+    _selectTab(1);
+  }
+
   late final _importer = Importer(widget.db);
   late final _sync = widget.inbox == null ? null : SmsSync(widget.db, widget.inbox!);
   late final _email = widget.email == null ? null : EmailSync(widget.db, widget.email!);
@@ -98,6 +111,11 @@ class _ShellState extends State<_Shell> with SingleTickerProviderStateMixin {
       return;
     }
     debugPrint('Gmail sync (interactive: $interactive): $result');
+    if (result is EmailSyncResult) {
+      for (final o in result.unrecognised) {
+        debugPrint('Gmail unrecognised: $o');
+      }
+    }
     if (!mounted) return;
     setState(() => _gmailConnected = result is EmailSyncResult || result == EmailSyncStatus.needsReconnect);
     switch (result) {
@@ -123,6 +141,7 @@ class _ShellState extends State<_Shell> with SingleTickerProviderStateMixin {
   @override
   void dispose() {
     _entrance.dispose();
+    _filter.dispose();
     _lifecycle?.dispose();
     super.dispose();
   }
@@ -132,6 +151,13 @@ class _ShellState extends State<_Shell> with SingleTickerProviderStateMixin {
   /// With [ask], prompts for SMS access and reports the outcome.
   Future<void> _readSms({bool ask = false}) async {
     final result = await _sync!.run(ask: ask);
+    if (result != null) {
+      debugPrint('SMS sync: scanned ${result.scanned}, alerts ${result.alerts}, added ${result.added}');
+      // Masked outlines only (digits and names hidden), on this phone's log.
+      for (final o in result.unrecognised) {
+        debugPrint('SMS unrecognised: $o');
+      }
+    }
     if (!mounted) return;
     final String? message;
     if (result == null) {
@@ -150,10 +176,17 @@ class _ShellState extends State<_Shell> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        titleSpacing: 16,
         title: Row(children: [
-          const Icon(Icons.account_balance_wallet_rounded, color: teal),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.asset('assets/brand/logo_192.png', width: 30, height: 30, excludeFromSemantics: true),
+          ),
           const SizedBox(width: 10),
-          Text(_tab == 0 ? 'PaisaPilot' : 'Activity', style: const TextStyle(fontWeight: FontWeight.w700)),
+          Flexible(
+            child: Text(_tab == 0 ? 'PaisaPilot' : 'Activity',
+                overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+          ),
         ]),
         actions: [
           if (_sync != null)
@@ -190,11 +223,12 @@ class _ShellState extends State<_Shell> with SingleTickerProviderStateMixin {
           children: [
             HomeScreen(
               db: widget.db,
-              onSeeAll: () => _selectTab(1),
+              onOpenActivity: _openActivity,
               onAddSms: _addSms,
               onReadSms: _sync == null ? null : () => _readSms(ask: true),
+              now: widget.now,
             ),
-            ActivityScreen(db: widget.db),
+            ActivityScreen(db: widget.db, filter: _filter),
           ],
         )),
       ),

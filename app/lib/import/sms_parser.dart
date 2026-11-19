@@ -67,19 +67,45 @@ final _patterns = [
       r'(?<date>\d{1,2}/\d{1,2}/\d{2}) (?<time>\d{1,2}:\d{2} [AP]M) from (?<party>.+?) '
       r'\(UPI Ref no (?<ref>\d+)\)'), dayFirst: false),
   // Canara balance alert, no payee or ref: "An amount of INR 40.00 has been DEBITED to your
-  // account XXX321 on 22/10/2026[ towards ATM / IMPS ...]. Total Avail.bal INR 1,234.00"
+  // account XXX321 on 22/10/2026[ towards ATM / IMPS ...]. Total Avail.bal INR 1,234.00".
+  // Also "Rs INR 40.00 has been credited to your account ...", and NEFT credits "An amount of
+  // INR 40.00 has been credited to XXX321 on ... towards NEFT by ..., Total Avail. Bal INR ...".
   _Pattern('canara', null, RegExp(
-      r'(?:An amount of|Rs\.) ' '$_amount' r' has been (?<dir>DEBITED|CREDITED) to your (?:account|A/c) '
-      r'(?<acct>X+\d+) on (?<date>\d{1,2}/\d{1,2}/\d{2,4})(?: towards (?<party>.+?))?\.?\s*'
-      r'(?:Total Avail\.\s?bal|Avl Bal) ' '$_bal')),
-  // Canara debit card at a shop (POS) or ATM
+      r'(?:An amount of|Rs\.?) ' '$_amount' r' has been (?<dir>DEBITED|CREDITED|debited|credited) to '
+      r'(?:your (?:account|A/c) )?(?<acct>X+\d+) on (?<date>\d{1,2}/\d{1,2}/\d{2,4})'
+      r'(?: towards (?<party>.+?))?[.,]?\s*(?:Total Avail\.\s?[Bb]al|Avl Bal) ' '$_bal')),
+  // "Your a/c XXX321 CREDITED with INR 40.00 on 14/11/2026. Avl.Bal INR 1,234.00. - Canara Bank"
+  _Pattern('canara', null, RegExp(
+      r'Your a/c (?<acct>X+\d+) (?<dir>CREDITED|DEBITED) with ' '$_amount' r' on '
+      r'(?<date>\d{1,2}/\d{1,2}/\d{2,4})\.\s*\S+\s*' '$_bal')),
+  // Canara UPI reversal, month first: "Your a/c no. XX4321is credited for Rs.250.00 on 9/14/26
+  // 7:05 PM for reversal of transaction (UPI Ref no 1234...)". The ref is the failed payment's.
+  _Pattern('canara', 'CR', RegExp(
+      r'Your a/c no\. (?<acct>X+\d+)\s*is credited for ' '$_amount' r' on '
+      r'(?<date>\d{1,2}/\d{1,2}/\d{2}) (?<time>\d{1,2}:\d{2} [AP]M) for reversal of transaction '
+      r'\(UPI Ref no (?<ref>\d+)\)'), dayFirst: false, party: 'UPI reversal'),
+  // Canara debit card at a shop (POS) or ATM, three wordings (spacing varies, so \s+):
+  //   "A/C XXX321 linked to card XX9876 debited Rs 40.00 on 14/11/2026 POS SHOP txn. Avl Bal is Rs 1,234.00"
+  //   "A/C XXX321 linked to card debited Rs INR 40.00 on 14/11/26 POS SHOP Bal is Rs INR 1,234.00"
+  //   "A/c XXX321 linked to card debited INR 40.00 on 14/11/26 POS txn. Avl Bal INR 1,234.00"
   _Pattern('canara', 'DR', RegExp(
-      r'A/C (?<acct>X+\d+) linked to card X+\d+ debited Rs ' '$_amount' r' on '
-      r'(?<date>\d{2}/\d{2}/\d{4}) (?<party>.+?) txn\.\s*Avl Bal is Rs ' '$_bal')),
+      r'A/[Cc]\s+(?<acct>X+\d+)\s+linked to card\s+(?:X+\d+\s+)?debited\s+(?:Rs\s+)?' '$_amount' r'\s+on\s+'
+      r'(?<date>\d{2}/\d{2}/\d{2,4})\s+(?<party>.+?)(?:\s+txn)?\.?\s*(?:Avl\s+)?Bal(?:\s+is)?\s+(?:Rs\s+)?'
+      '$_bal')),
+  // India Post savings: "Account No. XXXX1234 CREDIT with amount Rs. 500.00 on 14-11-2026.
+  // Bal: Rs.1234.00."
+  _Pattern('indiapost', null, RegExp(
+      r'Account No\.?\s*(?<acct>X+\d+)\s+(?<dir>CREDIT|DEBIT)\s+with amount\s+' '$_amount' r'\s+on\s+'
+      r'(?<date>\d{2}-\d{2}-\d{4})\.?\s*\S+:?\s*' '$_bal')),
   // ICICI credit
   _Pattern('icici', 'CR', RegExp(
       r'Acct (?<acct>X+\d+) is credited with ' '$_amount' r' on (?<date>\d{2}-[A-Za-z]{3}-\d{2}) '
       r'from (?<party>.+?)\. UPI:\s*(?<ref>\d+)')),
+  // ICICI salary (NEFT) credit: "ICICI Bank Acc XX456 is credited with salary of Rs. 25,000.00 on
+  // 06-Nov-26. Info: NEFT*ACME. Avl Bal Rs. 25,300.00."
+  _Pattern('icici', 'CR', RegExp(
+      r'ICICI Bank Acc(?:t)? (?<acct>X+\d+) is credited with (?:salary of )?' '$_amount' r' on '
+      r'(?<date>\d{2}-[A-Za-z]{3}-\d{2})\.\s*Info:\s*(?<party>[^.]+)\..*?Avl Bal ' '$_bal')),
   // ICICI debit (UPI / AutoPay)
   _Pattern('icici', 'DR', RegExp(
       '$_amount' r' successfully debited from ICICI Bank (?<acct>X+\d+) on '
@@ -92,6 +118,12 @@ final _patterns = [
   _Pattern('slice', 'DR', RegExp(
       '$_amount' r' spent on your credit card (?<acct>x+\d+) at (?<party>.+?) on '
       r'(?<date>\d{2}-[A-Za-z]{3}-\d{2})',
+      caseSensitive: false)),
+  // slice credit card used for UPI (email): "₹40 spent on your slice credit card xx7890 via UPI.
+  // Transaction date 18-Nov-26 To NAME RRN 1234..."
+  _Pattern('slice', 'DR', RegExp(
+      '$_amount' r' spent on your slice credit card (?<acct>x+\d+) via UPI\. Transaction date '
+      r'(?<date>\d{1,2}-[A-Za-z]{3}-\d{2,4}) To (?<party>.+?) RRN (?<ref>\d+)',
       caseSensitive: false)),
   // slice credit card repayment (SMS and email name no card number)
   _Pattern('slice', 'CR', RegExp(
@@ -124,6 +156,13 @@ final _patterns = [
   // FamPay wallet: "You received Rs.150.0 from NAME with txn ..."
   _Pattern('fampay', 'CR', RegExp(
       r'You received ' '$_amount' r' from (?<party>.+?) with txn'), account: 'FamPay'),
+  // "Rs 150.0 was credited to your account with transaction ID ABC123. ..."
+  _Pattern('fampay', 'CR', RegExp(
+      '$_amount' r' was credited to your account with transaction'), account: 'FamPay', party: ''),
+  // "You were charged Rs. 49.0 for your new higher deposit limits on FamPay"
+  _Pattern('fampay', 'DR', RegExp(
+      r'You were charged ' '$_amount' r' for your new higher deposit limits'),
+      account: 'FamPay', party: 'FamPay charges'),
 ];
 
 final _otp = RegExp(r'\bOTP\b');
@@ -167,7 +206,7 @@ SmsTxn? parseSms(String text) {
     String? group(String name) => m.groupNames.contains(name) ? m.namedGroup(name) : null;
     return SmsTxn(
       source: p.source,
-      direction: p.direction ?? (group('dir')!.toUpperCase() == 'CREDITED' ? 'CR' : 'DR'),
+      direction: p.direction ?? (group('dir')!.toUpperCase().startsWith('CREDIT') ? 'CR' : 'DR'),
       amount: _num(group('amount'))!,
       date: group('date') == null ? null : _date(group('date')!, dayFirst: p.dayFirst),
       time: _time(group('time')),

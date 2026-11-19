@@ -32,7 +32,7 @@ void main() {
   tearDown(() => db.close());
 
   Future<List<String?>> names({int? category, bool byAmount = false}) async =>
-      [for (final r in await db.activity(null, category, '', byAmount, 100).get()) r.t.rawText];
+      [for (final r in await db.activity(null, category, null, '', byAmount, 100).get()) r.t.rawText];
 
   test('newest first by default, largest first on request', () async {
     expect(await names(), ['mystery', 'tea', 'lunch', 'shoes']);
@@ -48,7 +48,7 @@ void main() {
   test('rows report how many photos they have', () async {
     await db.addAttachment(ids['tea']!, 'a.jpg');
     await db.addAttachment(ids['tea']!, 'b.jpg');
-    final rows = {for (final r in await db.activity(null, null, '', false, 100).get()) r.t.rawText: r.photos};
+    final rows = {for (final r in await db.activity(null, null, null, '', false, 100).get()) r.t.rawText: r.photos};
     expect((rows['tea'], rows['lunch']), (2, 0));
   });
 
@@ -78,5 +78,58 @@ void main() {
     final tables = await old.customSelect("SELECT name FROM sqlite_master WHERE type = 'table'").get();
     expect([for (final t in tables) t.read<String>('name')], contains('attachments'));
     await old.close();
+  });
+
+  group('month filter and totals', () {
+    Future<void> add(String date, String direction, double amount, int? category) => db
+        .into(db.transactions)
+        .insert(TransactionsCompanion.insert(
+            accountId: account, txnDate: date, direction: direction, amount: amount, source: 'manual',
+            categoryId: Value(category)));
+
+    setUp(() async {
+      await add('2026-10-31', 'DR', 70, food); // October: outside November
+      await add('2026-11-05', 'CR', 45, food); // a refund: money in, not spending
+      await add('2026-12-01', 'DR', 10, food); // December
+    });
+
+    test('activity keeps to one month, including its last day', () async {
+      final nov = await db.activity(null, food, '2026-11', '', false, 100).get();
+      expect([for (final r in nov) r.t.amount], [45.0, 20.0, 180.0]);
+      final oct = await db.activity(null, null, '2026-10', '', false, 100).get();
+      expect([for (final r in oct) r.t.txnDate], ['2026-10-31']);
+    });
+
+    test('totals cover every matching row, beyond the row limit', () async {
+      final shown = await db.activity(null, null, null, '', false, 2).get();
+      final t = await db.activityTotals(null, null, null, '').getSingle();
+      expect(shown.length, 2);
+      expect((t.n, t.outTotal, t.inTotal), (7, 20 + 2500 + 180 + 900 + 70 + 10.0, 45.0));
+    });
+
+    test('a donut slice equals Activity filtered to that category and month', () async {
+      final slices = await db.spendByCategory('2026-11').get();
+      for (final s in slices) {
+        final t = await db.activityTotals('DR', s.categoryId ?? 0, '2026-11', '').getSingle();
+        final rows = await db.activity('DR', s.categoryId ?? 0, '2026-11', '', false, 500).get();
+        expect(t.outTotal, s.total, reason: s.category ?? 'Unsorted');
+        expect(rows.fold<double>(0, (sum, r) => sum + r.t.amount), s.total);
+        expect(rows.length, s.txnCount);
+      }
+      expect([for (final s in slices) (s.category, s.total)],
+          [('Shopping', 2500.0), (null, 900.0), ('Food and cafes', 200.0)]);
+    });
+
+    test('period totals tell an empty period from a zero spend', () async {
+      final empty = await db.periodTotals('2026-09-01', '2026-09-30').getSingle();
+      expect((empty.spent, empty.txns), (0.0, 0));
+      await add('2026-09-10', 'CR', 500, null);
+      final onlyIncome = await db.periodTotals('2026-09-01', '2026-09-30').getSingle();
+      expect((onlyIncome.spent, onlyIncome.received, onlyIncome.txns), (0.0, 500.0, 1));
+    });
+
+    test('months with transactions, newest first', () async {
+      expect(await db.activityMonths().get(), ['2026-12', '2026-11', '2026-10']);
+    });
   });
 }

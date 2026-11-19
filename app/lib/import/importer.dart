@@ -49,6 +49,7 @@ class Importer {
     'slicebank': 'slice bank',
     'cgg': 'CGG Bank',
     'fampay': 'FamPay',
+    'indiapost': 'India Post',
   };
 
   Future<StatementImport> importStatement(int accountId, String layoutText) {

@@ -37,6 +37,17 @@ void main() {
   setUp(() => db = AppDatabase(NativeDatabase.memory()));
   tearDown(() => db.close());
 
+  test('money messages that match no format are reported, masked; others are not', () async {
+    final inbox = FakeInbox([
+      msg(1, canaraDr),
+      msg(2, 'Rs. 450 received from RAVI KUMAR in a/c XX4321 on 14-11-26 - New Bank'),
+      msg(3, 'Your bill is ready. Visit our site.'),
+    ], granted: true);
+    final result = (await SmsSync(db, inbox).run())!;
+    expect(result.alerts, 1);
+    expect(result.unrecognised, ['VM-BANK: Rs. 999 received from Xx Xx in a/c Xx9999 on 99-99-99 - Xx Bank']);
+  });
+
   test('without permission nothing is read unless the user is asked', () async {
     final inbox = FakeInbox([msg(1, canaraDr)], grantOnAsk: false);
     final sync = SmsSync(db, inbox);

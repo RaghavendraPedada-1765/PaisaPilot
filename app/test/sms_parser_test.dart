@@ -25,6 +25,76 @@ void main() {
         ('icici', 'CR', 300.0, '2026-11-14', 'RAVI KUMARR'));
   });
 
+  group('more Canara wordings', () {
+    test('lowercase "credited" after "Rs INR"', () {
+      final t = parseSms('Rs INR 2,500.00 has been credited to your account XXX321 on 14/11/2026 towards '
+          'IMPS Ref No: 51230000- 14/11/26 10:15:00. Total Avail.bal INR 3,100.00 - Canara Bank')!;
+      expect((t.direction, t.amount, t.date, t.account, t.balance), ('CR', 2500.0, '2026-11-14', 'XXX321', 3100.0));
+    });
+
+    test('NEFT credit to the account number, "Total Avail. Bal"', () {
+      final t = parseSms('An amount of INR 1.00 has been credited to XXX321 on 12/11/2026 towards NEFT by '
+          'ACME LTD, Sender HDFC0000001, A/c XX9876, HDFC BANK, Ref N1234, Total Avail. Bal INR 51.00- Canara Bank')!;
+      expect((t.direction, t.amount, t.date, t.account, t.balance), ('CR', 1.0, '2026-11-12', 'XXX321', 51.0));
+      expect(t.party, startsWith('NEFT by ACME LTD'));
+    });
+
+    test('"Your a/c ... CREDITED with"', () {
+      final t = parseSms('Your a/c XXX321 CREDITED with INR 75.00 on 03/11/2026. Avl.Bal INR 420.00. - Canara Bank')!;
+      expect((t.direction, t.amount, t.date, t.balance), ('CR', 75.0, '2026-11-03', 420.0));
+    });
+
+    test('UPI reversal credit keeps the failed payment\'s ref', () {
+      final t = parseSms('Your a/c no. XX4321is credited for Rs.250.00 on 9/14/26 7:05 PM for reversal of '
+          'transaction (UPI Ref no 512300000009)-Canara Bank')!;
+      expect((t.direction, t.amount, t.date, t.time, t.party, t.ref),
+          ('CR', 250.0, '2026-09-14', '19:05:00', 'UPI reversal', '512300000009'));
+    });
+
+    test('debit card, "A/c", no shop name, "Avl Bal INR", double spaces', () {
+      final t = parseSms('A/c XXX321  linked to card debited INR 1,250.00 on 14/11/26 POS txn. Avl Bal INR '
+          '2,000.00. To stop further debit SMS BLOCK to 9999999999, call 1930 for cyber fraud. -Canara Bank')!;
+      expect((t.direction, t.amount, t.date, t.party, t.balance), ('DR', 1250.0, '2026-11-14', 'POS', 2000.0));
+    });
+
+    test('debit card without the card number, "Rs INR" and a short year', () {
+      final t = parseSms('A/C XXX321 linked to card debited Rs INR 1,250.00 on 14/11/26 POS TEA STALL Bal is Rs '
+          'INR 2,000.00.To report fraud & stop further debit SMS BLOCK to 9999999999 - Canara Bank')!;
+      expect((t.direction, t.amount, t.date, t.party, t.balance), ('DR', 1250.0, '2026-11-14', 'POS TEA STALL', 2000.0));
+    });
+  });
+
+  test('slice credit card used for UPI (email)', () {
+    final t = parseSms('Hi Ravi, ₹45 spent on your slice credit card xx7890 via UPI. Transaction date 18-Nov-26 '
+        'To TEA STALL RRN 512300000010 Stay safe, slice safety tips')!;
+    expect((t.source, t.direction, t.amount, t.date, t.account, t.party, t.ref),
+        ('slice', 'DR', 45.0, '2026-11-18', 'xx7890', 'TEA STALL', '512300000010'));
+  });
+
+  test('India Post savings credit', () {
+    final t = parseSms('Account No. XXXX4321 CREDIT with amount Rs. 500.00 on 14-11-2026. Bal: Rs.1234.00. [S12345]')!;
+    final spaced = parseSms('Account No.  XXXX4321  CREDIT with amount  Rs. 500.00 on 14-11-2026. Bal: Rs.1234.00.')!;
+    expect((spaced.amount, spaced.account), (500.0, 'XXXX4321'));
+    expect((t.source, t.direction, t.amount, t.date, t.account, t.balance),
+        ('indiapost', 'CR', 500.0, '2026-11-14', 'XXXX4321', 1234.0));
+  });
+
+  test('FamPay credit and deposit-limit charge', () {
+    final cr = parseSms('Rs 150.0 was credited to your account with transaction ID ABC1234567. '
+        'Now, your account balance is Rs 900.00 on FamPay')!;
+    expect((cr.source, cr.direction, cr.amount, cr.account), ('fampay', 'CR', 150.0, 'FamPay'));
+    final fee = parseSms('You were charged Rs. 49.0 for your new higher deposit limits on FamPay')!;
+    expect((fee.direction, fee.amount, fee.party), ('DR', 49.0, 'FamPay charges'));
+  });
+
+  test('ICICI salary credit', () {
+    final t = parseSms('ICICI Bank Acc XX456 is credited with salary of Rs. 25,000.00 on 06-Nov-26. '
+        'Info: NEFT*ACME TECH PVT-. The Avl Bal Rs. 25,300.00.')!;
+    expect((t.source, t.direction, t.amount, t.date, t.party, t.balance),
+        ('icici', 'CR', 25000.0, '2026-11-06', 'NEFT*ACME TECH PVT-', 25300.0));
+    expect((t.account, t.ref), ('XX456', null));
+  });
+
   test('ICICI AutoPay debit', () {
     final t = parseSms('Rs 1999.00 successfully debited from ICICI Bank XX456 on 14-Nov-26 '
         'towards Google Play via UPI AutoPay mandate . RRN: 512300000004')!;

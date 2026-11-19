@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:paisapilot/data/database.dart';
 import 'package:paisapilot/import/email_sync.dart';
 import 'package:paisapilot/import/gmail_source.dart';
@@ -59,6 +61,53 @@ void main() {
 
     await sync.run();
     expect(box.queries.last, '${EmailSync.senders} after:${DateTime(2026, 11, 15, 10).millisecondsSinceEpoch ~/ 1000}');
+  });
+
+  group('Gmail requests', () {
+    String message(String id) => jsonEncode({
+          'id': id,
+          'internalDate': '${DateTime(2026, 11, 18).millisecondsSinceEpoch}',
+          'payload': {
+            'mimeType': 'text/plain',
+            'headers': [
+              {'name': 'Subject', 'value': 'Alert'},
+            ],
+            'body': {'data': base64Url.encode(utf8.encode(spend))},
+          },
+        });
+
+    GmailSource source(Map<String, List<int>> statuses, List<String> calls) => GmailSource(
+        retryDelay: Duration.zero,
+        client: MockClient((req) async {
+          final key = req.url.path.endsWith('/messages') ? 'list' : req.url.pathSegments.last;
+          calls.add(key);
+          final queue = statuses[key]!;
+          final status = queue.length > 1 ? queue.removeAt(0) : queue.first;
+          if (status != 200) return http.Response('{"error": "backend"}', status);
+          return http.Response(key == 'list' ? jsonEncode({'messages': [{'id': 'a'}]}) : message(key), 200);
+        }));
+
+    test('a passing 500 or 429 is retried and the sync goes on', () async {
+      final calls = <String>[];
+      final mails = await source({'list': [429, 200], 'a': [500, 200]}, calls).search('token', 'q');
+      expect(mails.single.text, spend);
+      expect(calls, ['list', 'list', 'a', 'a']);
+    });
+
+    test('a lasting error stops after three tries; a 401 is not retried', () async {
+      final calls = <String>[];
+      await expectLater(source({'list': [200], 'a': [503]}, calls).search('token', 'q'), throwsA(isA<GmailException>()));
+      expect(calls, ['list', 'a', 'a', 'a']);
+      calls.clear();
+      await expectLater(source({'list': [401]}, calls).search('token', 'q'), throwsA(isA<GmailException>()));
+      expect(calls, ['list']);
+    });
+  });
+
+  test('mail that matches no format is reported as a masked outline', () async {
+    final box = FakeMailbox([mail(14, spend), mail(15, 'Rs. 450 paid to ANITA KUMAR 9876 - slice')]);
+    final result = await EmailSync(db, box).run(interactive: true) as EmailSyncResult;
+    expect(result.unrecognised, ['2026-11-15T10:00 Transaction alert | Rs. 999 paid to Xx Xx 9999 - slice']);
   });
 
   test('declining the consent screen leaves Gmail unconnected', () async {

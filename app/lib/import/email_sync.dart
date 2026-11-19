@@ -1,15 +1,19 @@
 import '../data/database.dart';
 import 'gmail_source.dart';
 import 'importer.dart';
+import 'outline.dart';
 
 class EmailSyncResult {
-  const EmailSyncResult({required this.scanned, required this.alerts, required this.added});
+  const EmailSyncResult({required this.scanned, required this.alerts, required this.added, this.unrecognised = const []});
   final int scanned;
   final int alerts;
   final int added;
+  /// Masked outlines (subject | body) of emails that matched no format.
+  final List<String> unrecognised;
 
   @override
-  String toString() => 'EmailSyncResult(scanned: $scanned, alerts: $alerts, added: $added)';
+  String toString() => 'EmailSyncResult(scanned: $scanned, alerts: $alerts, added: $added, '
+      'unrecognised: ${unrecognised.length})';
 }
 
 enum EmailSyncStatus { notConnected, needsReconnect }
@@ -29,7 +33,8 @@ class EmailSync {
 
   /// Bump when the parser learns new email formats: the next run re-reads
   /// all matching mail once.
-  static const parserVersion = 3; // 2: "slice bank account" debits; 3: fill in times
+  // 2: "slice bank account" debits; 3: fill in times; 4: report unrecognised mail; 5: slice card UPI spends
+  static const parserVersion = 5;
 
   /// Senders whose alerts are imported (Gmail query syntax).
   static const senders = 'from:slice.bank.in';
@@ -56,17 +61,21 @@ class EmailSync {
     final emails = await source.search(token, query);
     emails.sort((a, b) => a.date.compareTo(b.date));
     var alerts = 0, added = 0, newest = last;
+    final unrecognised = <String>[];
     for (final e in emails) {
       final result = await _importer.importSms(e.text, receivedAt: e.date);
       if (result != null) {
         alerts++;
         if (result.inserted) added++;
+      } else {
+        // Only the bank's own senders are searched, so every miss is worth a look.
+        unrecognised.add('${e.date.toIso8601String().substring(0, 16)} ${outline(e.subject)} | ${outline(e.text)}');
       }
       if (e.date.millisecondsSinceEpoch > newest) newest = e.date.millisecondsSinceEpoch;
     }
     if (newest != last) await db.setSetting(_lastReadKey, '$newest');
     if (parserChanged) await db.setSetting(_parserKey, '$parserVersion');
-    return EmailSyncResult(scanned: emails.length, alerts: alerts, added: added);
+    return EmailSyncResult(scanned: emails.length, alerts: alerts, added: added, unrecognised: unrecognised);
   }
 
   Future<void> disconnect() async {

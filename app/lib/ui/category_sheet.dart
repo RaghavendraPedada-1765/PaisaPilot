@@ -6,15 +6,20 @@ import '../data/photo_store.dart';
 import 'format.dart';
 import 'theme.dart';
 
-/// A transaction's details: its category (optionally for everything from the
-/// same payee), photos kept with it, and delete.
+/// A transaction's details: who, how much, when, where, its category
+/// (optionally for everything from the same payee), receipt photos, the
+/// original alert, and delete. Slides up in 240 ms and away in 200 ms.
 Future<void> showCategorySheet(BuildContext context, AppDatabase db, ActivityResult row) {
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    sheetAnimationStyle: MediaQuery.disableAnimationsOf(context) ? AnimationStyle.noAnimation
+    useSafeArea: true,
+    showDragHandle: false,
+    sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
+        ? AnimationStyle.noAnimation
         : const AnimationStyle(duration: Duration(milliseconds: 240), reverseDuration: Duration(milliseconds: 200)),
-    backgroundColor: const Color(0xFF122022),
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black54,
     builder: (_) => _CategorySheet(db: db, row: row),
   );
 }
@@ -29,7 +34,11 @@ class _CategorySheet extends StatefulWidget {
 }
 
 class _CategorySheetState extends State<_CategorySheet> {
-  var _forPayee = true;
+  // Off by default: relabelling a whole payee is a deliberate choice, and the
+  // switch shows how many payments it would touch.
+  var _forPayee = false;
+  late final Future<int>? _payeeCount =
+      widget.row.t.payeeId == null ? null : widget.db.payeeChangeCount(widget.row.t);
 
   Future<void> _pick(int? categoryId) async {
     final row = widget.row;
@@ -175,79 +184,153 @@ class _CategorySheetState extends State<_CategorySheet> {
         ),
       );
 
-  @override
-  Widget build(BuildContext context) {
-    final t = widget.row.t;
+  static const _sources = {'sms': 'SMS alert', 'statement': 'Bank statement', 'manual': 'Pasted alert'};
+
+  Widget _fact(String label, String value, {Color? color}) {
     final text = Theme.of(context).textTheme;
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.7,
-      maxChildSize: 0.95,
-      builder: (context, scroll) => StreamBuilder<List<Category>>(
-        stream: widget.db.watchCategories(),
-        builder: (context, snap) {
-          final cats = snap.data ?? const <Category>[];
-          return ListView(
-            controller: scroll,
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-            children: [
-              Center(
-                child: Container(
-                  width: 36, height: 4,
-                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(widget.row.payee ?? 'Unknown', style: text.titleLarge),
-              Text(
-                  '${t.direction == 'CR' ? 'Received' : 'Paid'} ${inr(t.amount)} · ${dayLabel(t.txnDate)}'
-                  '${timeLabel(t.txnTime) == null ? '' : ', ${timeLabel(t.txnTime)}'}',
-                  style: text.bodyMedium?.copyWith(color: Colors.white60)),
-              if (t.rawText != null) ...[
-                const SizedBox(height: 8),
-                ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  title: const Text('Original transaction alert'),
-                  children: [SelectableText(t.rawText!)],
-                ),
-              ],
-              const SizedBox(height: 16),
-              Text('Photos', style: text.labelLarge),
-              Text('A bill or what you bought, to remember what this was. Kept only on this phone.',
-                  style: text.bodySmall?.copyWith(color: Colors.white54)),
-              const SizedBox(height: 8),
-              _photos(),
-              const SizedBox(height: 8),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                value: _forPayee,
-                onChanged: (v) => setState(() => _forPayee = v),
-                title: const Text('Apply to everything from this payee'),
-                subtitle: const Text('Rows you labelled one by one are kept'),
-              ),
-              const Divider(),
-              for (final c in cats)
-                _option(c.name, c.id, selected: c.id == t.categoryId),
-              _option('Unsorted', null, selected: t.categoryId == null),
-              const Divider(),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                title: const Text('Delete transaction', style: TextStyle(color: Colors.redAccent)),
-                subtitle: const Text('For duplicates or wrong rows'),
-                onTap: _delete,
-              ),
-            ],
-          );
-        },
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 104, child: Text(label, style: text.bodyMedium?.copyWith(color: textFaint))),
+          Expanded(child: Text(value, style: text.bodyMedium?.copyWith(color: color))),
+        ],
       ),
     );
   }
 
-  Widget _option(String name, int? id, {required bool selected}) => ListTile(
-        contentPadding: EdgeInsets.zero,
-        title: Text(name),
-        trailing: selected ? const Icon(Icons.check, color: teal) : null,
-        onTap: () => _pick(id),
+  @override
+  Widget build(BuildContext context) {
+    final row = widget.row;
+    final t = row.t;
+    final isCredit = t.direction == 'CR';
+    final text = Theme.of(context).textTheme;
+    final payee = row.payee ?? 'Unknown';
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.66,
+      minChildSize: 0.4,
+      maxChildSize: 0.95,
+      snap: true,
+      builder: (context, scroll) => FrostedSheet(
+        child: StreamBuilder<List<Category>>(
+          stream: widget.db.watchCategories(),
+          builder: (context, snap) {
+            final cats = snap.data ?? const <Category>[];
+            return ListView(
+              controller: scroll,
+              // Clear of the gesture bar at the end of the list.
+              padding: EdgeInsets.fromLTRB(20, 10, 20, 28 + MediaQuery.paddingOf(context).bottom),
+              children: [
+                Center(
+                  child: Semantics(
+                    label: 'Drag to resize or close',
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(color: Colors.white30, borderRadius: BorderRadius.circular(2)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(isCredit ? 'Received from' : 'Paid to', style: text.labelLarge?.copyWith(color: textMuted)),
+                Text(payee, style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                Semantics(
+                  label: '${isCredit ? 'Received' : 'Paid'} ${inr(t.amount)}',
+                  excludeSemantics: true,
+                  child: Text(
+                    signedInr(t.amount, credit: isCredit),
+                    style: money(text.headlineLarge)?.copyWith(
+                      color: isCredit ? credit : debit,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _fact('When', [dayLabel(t.txnDate), ?timeLabel(t.txnTime)].join(', ')),
+                _fact('Account', row.account),
+                _fact('Category', row.category ?? 'Unsorted', color: row.category == null ? unsortedColor : null),
+                _fact('Source', _sources[t.source] ?? t.source),
+                if (t.upiRef != null) _fact('UPI ref', t.upiRef!),
+                const SizedBox(height: 16),
+                const SectionLabel('Receipt photos'),
+                Text('A bill or what you bought. Kept only on this phone.',
+                    style: text.bodySmall?.copyWith(color: textFaint)),
+                const SizedBox(height: 8),
+                _photos(),
+                const SizedBox(height: 20),
+                const SectionLabel('Category'),
+                if (_payeeCount != null)
+                  FutureBuilder<int>(
+                    future: _payeeCount,
+                    builder: (context, count) {
+                      final n = count.data;
+                      return SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: _forPayee,
+                        onChanged: (v) => setState(() => _forPayee = v),
+                        title: Text('Apply to every payment to $payee'),
+                        subtitle: Text(n == null
+                            ? 'Counting payments…'
+                            : 'Affects ${n == 1 ? '1 payment' : '$n payments'}; ones you labelled one by one are kept'),
+                      );
+                    },
+                  ),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final c in cats) _option(c.name, c.id, selected: c.id == t.categoryId),
+                    _option('Unsorted', null, selected: t.categoryId == null),
+                  ],
+                ),
+                if (t.rawText != null) ...[
+                  const SizedBox(height: 12),
+                  ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    shape: const Border(),
+                    collapsedShape: const Border(),
+                    title: const Text('Original alert'),
+                    subtitle: Text('The message this was read from', style: text.bodySmall?.copyWith(color: textFaint)),
+                    childrenPadding: const EdgeInsets.only(bottom: 8),
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: listFill,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: glassEdge),
+                        ),
+                        child: SelectableText(t.rawText!, style: text.bodySmall?.copyWith(color: textMuted)),
+                      ),
+                    ],
+                  ),
+                ],
+                const Divider(height: 24),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.delete_outline, color: debit),
+                  title: const Text('Delete transaction', style: TextStyle(color: debit)),
+                  subtitle: const Text('For duplicates or wrong rows'),
+                  onTap: _delete,
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _option(String name, int? id, {required bool selected}) => ChoiceChip(
+        label: Text(name),
+        selected: selected,
+        materialTapTargetSize: MaterialTapTargetSize.padded,
+        avatar: Icon(Icons.circle, size: 10, color: categoryColor(id)),
+        onSelected: (_) => _pick(id),
       );
 }

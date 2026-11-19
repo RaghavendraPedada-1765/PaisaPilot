@@ -3003,22 +3003,23 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     ).map((QueryRow row) => row.readNullable<String>('month'));
   }
 
-  Selectable<MonthTotalsResult> monthTotals(String month) {
+  Selectable<PeriodTotalsResult> periodTotals(String from, String to) {
     return customSelect(
-      'SELECT COALESCE(SUM(CASE WHEN t.direction = \'DR\' THEN t.amount END), 0.0) AS spent, COALESCE(SUM(CASE WHEN t.direction = \'CR\' THEN t.amount END), 0.0) AS received FROM transactions AS t LEFT JOIN categories AS c ON c.id = t.category_id WHERE substr(t.txn_date, 1, 7) = ?1 AND(c.id IS NULL OR c.counts_as_spend)',
-      variables: [Variable<String>(month)],
+      'SELECT COALESCE(SUM(CASE WHEN t.direction = \'DR\' AND(c.id IS NULL OR c.counts_as_spend)THEN t.amount END), 0.0) AS spent, COALESCE(SUM(CASE WHEN t.direction = \'CR\' AND(c.id IS NULL OR c.counts_as_spend)THEN t.amount END), 0.0) AS received, COUNT(*) AS txns FROM transactions AS t LEFT JOIN categories AS c ON c.id = t.category_id WHERE t.txn_date BETWEEN ?1 AND ?2',
+      variables: [Variable<String>(from), Variable<String>(to)],
       readsFrom: {transactions, categories},
     ).map(
-      (QueryRow row) => MonthTotalsResult(
+      (QueryRow row) => PeriodTotalsResult(
         spent: row.read<double>('spent'),
         received: row.read<double>('received'),
+        txns: row.read<int>('txns'),
       ),
     );
   }
 
   Selectable<SpendByCategoryResult> spendByCategory(String month) {
     return customSelect(
-      'SELECT c.id AS category_id, c.name AS category, SUM(t.amount) AS total, COUNT(*) AS txn_count FROM transactions AS t LEFT JOIN categories AS c ON c.id = t.category_id WHERE substr(t.txn_date, 1, 7) = ?1 AND t.direction = \'DR\' AND(c.id IS NULL OR c.counts_as_spend)GROUP BY t.category_id ORDER BY total DESC',
+      'SELECT c.id AS category_id, c.name AS category, SUM(t.amount) AS total, COUNT(*) AS txn_count FROM transactions AS t LEFT JOIN categories AS c ON c.id = t.category_id WHERE t.txn_date BETWEEN ?1 || \'-01\' AND ?1 || \'-31\' AND t.direction = \'DR\' AND(c.id IS NULL OR c.counts_as_spend)GROUP BY t.category_id ORDER BY total DESC',
       variables: [Variable<String>(month)],
       readsFrom: {categories, transactions},
     ).map(
@@ -3034,15 +3035,17 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   Selectable<ActivityResult> activity(
     String? direction,
     int? category,
+    String? month,
     String search,
     bool byAmount,
     int maxRows,
   ) {
     return customSelect(
-      'SELECT"t"."id" AS "nested_0.id", "t"."account_id" AS "nested_0.account_id", "t"."txn_date" AS "nested_0.txn_date", "t"."txn_time" AS "nested_0.txn_time", "t"."direction" AS "nested_0.direction", "t"."amount" AS "nested_0.amount", "t"."balance_after" AS "nested_0.balance_after", "t"."payee_id" AS "nested_0.payee_id", "t"."category_id" AS "nested_0.category_id", "t"."category_source" AS "nested_0.category_source", "t"."upi_ref" AS "nested_0.upi_ref", "t"."source" AS "nested_0.source", "t"."pass_through_group" AS "nested_0.pass_through_group", "t"."raw_text" AS "nested_0.raw_text", COALESCE(p.display_name, p.raw_name) AS payee, c.name AS category, a.name AS account, (SELECT COUNT(*) FROM attachments AS x WHERE x.txn_id = t.id) AS photos FROM transactions AS t INNER JOIN accounts AS a ON a.id = t.account_id LEFT JOIN payees AS p ON p.id = t.payee_id LEFT JOIN categories AS c ON c.id = t.category_id WHERE(?1 IS NULL OR t.direction = ?1)AND(?2 IS NULL OR(?2 = 0 AND t.category_id IS NULL)OR t.category_id = ?2)AND(?3 = \'\' OR p.raw_name LIKE \'%\' || ?3 || \'%\' OR p.display_name LIKE \'%\' || ?3 || \'%\' OR c.name LIKE \'%\' || ?3 || \'%\')ORDER BY CASE WHEN ?4 THEN t.amount ELSE 0 END DESC, t.txn_date DESC, t.txn_time DESC, t.id DESC LIMIT ?5',
+      'SELECT"t"."id" AS "nested_0.id", "t"."account_id" AS "nested_0.account_id", "t"."txn_date" AS "nested_0.txn_date", "t"."txn_time" AS "nested_0.txn_time", "t"."direction" AS "nested_0.direction", "t"."amount" AS "nested_0.amount", "t"."balance_after" AS "nested_0.balance_after", "t"."payee_id" AS "nested_0.payee_id", "t"."category_id" AS "nested_0.category_id", "t"."category_source" AS "nested_0.category_source", "t"."upi_ref" AS "nested_0.upi_ref", "t"."source" AS "nested_0.source", "t"."pass_through_group" AS "nested_0.pass_through_group", "t"."raw_text" AS "nested_0.raw_text", COALESCE(p.display_name, p.raw_name) AS payee, c.name AS category, a.name AS account, (SELECT COUNT(*) FROM attachments AS x WHERE x.txn_id = t.id) AS photos FROM transactions AS t INNER JOIN accounts AS a ON a.id = t.account_id LEFT JOIN payees AS p ON p.id = t.payee_id LEFT JOIN categories AS c ON c.id = t.category_id WHERE(?1 IS NULL OR t.direction = ?1)AND(?2 IS NULL OR(?2 = 0 AND t.category_id IS NULL)OR t.category_id = ?2)AND(?3 IS NULL OR t.txn_date BETWEEN ?3 || \'-01\' AND ?3 || \'-31\')AND(?4 = \'\' OR p.raw_name LIKE \'%\' || ?4 || \'%\' OR p.display_name LIKE \'%\' || ?4 || \'%\' OR c.name LIKE \'%\' || ?4 || \'%\')ORDER BY CASE WHEN ?5 THEN t.amount ELSE 0 END DESC, t.txn_date DESC, t.txn_time DESC, t.id DESC LIMIT ?6',
       variables: [
         Variable<String>(direction),
         Variable<int>(category),
+        Variable<String>(month),
         Variable<String>(search),
         Variable<bool>(byAmount),
         Variable<int>(maxRows),
@@ -3057,6 +3060,38 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         photos: row.read<int>('photos'),
       ),
     );
+  }
+
+  Selectable<ActivityTotalsResult> activityTotals(
+    String? direction,
+    int? category,
+    String? month,
+    String search,
+  ) {
+    return customSelect(
+      'SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN t.direction = \'DR\' THEN t.amount END), 0.0) AS out_total, COALESCE(SUM(CASE WHEN t.direction = \'CR\' THEN t.amount END), 0.0) AS in_total FROM transactions AS t LEFT JOIN payees AS p ON p.id = t.payee_id LEFT JOIN categories AS c ON c.id = t.category_id WHERE(?1 IS NULL OR t.direction = ?1)AND(?2 IS NULL OR(?2 = 0 AND t.category_id IS NULL)OR t.category_id = ?2)AND(?3 IS NULL OR t.txn_date BETWEEN ?3 || \'-01\' AND ?3 || \'-31\')AND(?4 = \'\' OR p.raw_name LIKE \'%\' || ?4 || \'%\' OR p.display_name LIKE \'%\' || ?4 || \'%\' OR c.name LIKE \'%\' || ?4 || \'%\')',
+      variables: [
+        Variable<String>(direction),
+        Variable<int>(category),
+        Variable<String>(month),
+        Variable<String>(search),
+      ],
+      readsFrom: {transactions, payees, categories},
+    ).map(
+      (QueryRow row) => ActivityTotalsResult(
+        n: row.read<int>('n'),
+        outTotal: row.read<double>('out_total'),
+        inTotal: row.read<double>('in_total'),
+      ),
+    );
+  }
+
+  Selectable<String> activityMonths() {
+    return customSelect(
+      'SELECT DISTINCT substr(txn_date, 1, 7) AS month FROM transactions ORDER BY month DESC',
+      variables: [],
+      readsFrom: {transactions},
+    ).map((QueryRow row) => row.read<String>('month'));
   }
 
   @override
@@ -6088,10 +6123,15 @@ class $AppDatabaseManager {
       $SettingsTableManager(_db, _db.settings);
 }
 
-class MonthTotalsResult {
+class PeriodTotalsResult {
   final double spent;
   final double received;
-  MonthTotalsResult({required this.spent, required this.received});
+  final int txns;
+  PeriodTotalsResult({
+    required this.spent,
+    required this.received,
+    required this.txns,
+  });
 }
 
 class SpendByCategoryResult {
@@ -6119,5 +6159,16 @@ class ActivityResult {
     this.category,
     required this.account,
     required this.photos,
+  });
+}
+
+class ActivityTotalsResult {
+  final int n;
+  final double outTotal;
+  final double inTotal;
+  ActivityTotalsResult({
+    required this.n,
+    required this.outTotal,
+    required this.inTotal,
   });
 }

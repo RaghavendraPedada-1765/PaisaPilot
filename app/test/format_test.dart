@@ -32,4 +32,36 @@ void main() {
     expect(dayLabel('2026-11-15', now), 'Yesterday');
     expect(dayLabel('2026-10-22', now), '22 Oct 2026');
   });
+
+  test('signed amounts use + and a true minus', () {
+    expect(signedInr(1250, credit: false), '−₹1,250');
+    expect(signedInr(84.5, credit: true), '+₹84.50');
+    expect(signedNet(-3888.9), '−₹3,888.90');
+    expect(signedNet(0), '₹0');
+  });
+
+  test('day headings name the weekday', () {
+    final now = DateTime(2026, 11, 18);
+    expect(dayHeading('2026-11-18', now), 'Today');
+    expect(dayHeading('2026-11-14', now), 'Sat 14 Nov');
+    expect(dayHeading('2025-12-31', now), 'Wed 31 Dec 2025');
+  });
+
+  test('a running month is compared with the same days of the last one', () {
+    final c = monthComparison('2026-11', DateTime(2026, 11, 18, 9));
+    expect((c.previous.from, c.previous.to, c.partial), ('2026-10-01', '2026-10-18', true));
+    expect(c.label, 'vs 1–18 Oct (same days)');
+    // 30 March: February has no day 30, so its whole month counts.
+    final march = monthComparison('2026-03', DateTime(2026, 3, 30));
+    expect((march.previous.from, march.previous.to), ('2026-02-01', '2026-02-28'));
+  });
+
+  test('a finished month is compared with the whole previous month', () {
+    final c = monthComparison('2026-10', DateTime(2026, 11, 18));
+    expect((c.current.from, c.current.to), ('2026-10-01', '2026-10-31'));
+    expect((c.previous.from, c.previous.to, c.partial), ('2026-09-01', '2026-09-30', false));
+    expect(c.label, 'vs September (full month)');
+    // The last day of a month counts as finished.
+    expect(monthComparison('2026-11', DateTime(2026, 11, 30)).partial, isFalse);
+  });
 }
